@@ -6,22 +6,26 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
+import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var input: EditText
     private lateinit var output: TextView
     private lateinit var progress: TextView
+    private lateinit var tts: TextToSpeech
 
-    private var tts: TextToSpeech? = null
     private var minutes = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,26 +48,35 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         findViewById<Button>(R.id.listen).setOnClickListener {
-            speakOutput()
+            speakTeacher()
         }
     }
 
+    // -----------------------------
+    // MICROPHONE
+    // -----------------------------
+
     private fun listen() {
 
-        if (ContextCompat.checkSelfPermission(
+        if (
+            ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
             ) != PackageManager.PERMISSION_GRANTED
         ) {
+
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 10
             )
+
             return
         }
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        val intent = Intent(
+            RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+        )
 
         intent.putExtra(
             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -83,9 +96,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try {
             startActivityForResult(intent, 11)
         } catch (e: Exception) {
+
             Toast.makeText(
                 this,
-                "Speech recognition is not available on this phone.",
+                "Speech recognition is not available.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -96,79 +110,318 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         resultCode: Int,
         data: Intent?
     ) {
-        super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == 11 && resultCode == RESULT_OK) {
+        super.onActivityResult(
+            requestCode,
+            resultCode,
+            data
+        )
+
+        if (
+            requestCode == 11 &&
+            resultCode == RESULT_OK
+        ) {
 
             val result = data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.getStringArrayListExtra(
+                    RecognizerIntent.EXTRA_RESULTS
+                )
                 ?.firstOrNull()
 
             if (!result.isNullOrBlank()) {
+
                 input.setText(result)
+
                 coach()
             }
         }
     }
+
+    // -----------------------------
+    // AI ENGLISH TEACHER
+    // -----------------------------
 
     private fun coach() {
 
         val sentence = input.text.toString().trim()
 
         if (sentence.isEmpty()) {
+
             Toast.makeText(
                 this,
                 "Please speak or type something first.",
                 Toast.LENGTH_SHORT
             ).show()
+
             return
         }
 
-        minutes = (minutes + 1).coerceAtMost(20)
+        findViewById<Button>(R.id.ask).isEnabled = false
+        findViewById<Button>(R.id.speak).isEnabled = false
 
-        progress.text = "Today's lesson: $minutes/20 minutes"
+        output.text = "🧑‍🏫 AI English Teacher\n\nAnalyzing your sentence..."
 
-        output.text = """
-AI English Teacher
+        thread {
+
+            try {
+
+                val apiKey = BuildConfig.GEMINI_API_KEY
+
+                if (apiKey.isBlank()) {
+
+                    runOnUiThread {
+
+                        output.text =
+                            "❌ Gemini API key is missing."
+
+                        enableButtons()
+                    }
+
+                    return@thread
+                }
+
+                val prompt = """
+You are my personal AI English Teacher.
+
+I am an Indian IT professional learning spoken English and professional workplace communication.
+
+Analyze the student's ACTUAL sentence below.
+
+Student sentence:
+"$sentence"
+
+Give the answer using this structure:
+
+🧑‍🏫 AI English Teacher
 
 You said:
 "$sentence"
 
-Natural English:
-Try to express the same idea in a complete, natural sentence.
+✅ Correct English:
+Give the grammatically correct sentence.
 
-Grammar:
-• Check the verb tense against the time expression.
-• Use Subject + Verb + Object when possible.
-• Prefer natural workplace phrases instead of direct translation.
+💡 Why:
+Explain the grammar mistake simply.
 
-Vocabulary:
+🗣 Natural English:
+Give a natural spoken-English version.
 
-resolve — successfully fix a problem.
+💼 Professional English:
+Give a professional workplace version suitable for an IT professional.
 
+📚 Grammar:
+Explain the important grammar rule used in this sentence.
+
+📖 Vocabulary:
+Give 3 useful professional vocabulary words related to this topic.
+For each word provide:
+Meaning:
 Example:
-"We resolved the production issue."
 
-clarify — make something clear.
+🔊 Pronunciation:
+Give pronunciation help for one difficult word.
 
-Example:
-"Could you clarify the requirement?"
+⭐ Fluency Score:
+Give a score from 1 to 10.
 
-Professional version:
+🔁 Try Again:
+Give one corrected sentence for me to repeat.
 
-"I worked on the task and resolved the issue."
+❓ Next Question:
+Ask one natural follow-up question based on my actual sentence.
 
-Fluency score: 7/10
+Important:
+- Analyze my actual sentence.
+- Do NOT give a generic response.
+- Do NOT give the same vocabulary for every sentence.
+- If my sentence is already correct, tell me it is correct.
+- Focus on spoken English.
+- Focus on professional IT communication.
+- Keep explanations simple and practical.
+""".trimIndent()
 
-🔁 Repeat your answer using one new word.
+                val response =
+                    callGemini(
+                        apiKey,
+                        prompt
+                    )
 
-Next question:
+                runOnUiThread {
 
-What was the main issue, and how did you resolve it?
-        """.trimIndent()
+                    if (response != null) {
+
+                        minutes =
+                            (minutes + 1).coerceAtMost(20)
+
+                        progress.text =
+                            "Today's lesson: $minutes/20 minutes"
+
+                        output.text = response
+
+                    } else {
+
+                        output.text =
+                            "❌ Gemini did not return a response."
+                    }
+
+                    enableButtons()
+                }
+
+            } catch (e: Exception) {
+
+                runOnUiThread {
+
+                    output.text =
+                        "❌ Error connecting to Gemini.\n\n" +
+                        e.message
+
+                    enableButtons()
+                }
+            }
+        }
     }
 
-    private fun speakOutput() {
+    // -----------------------------
+    // GEMINI API
+    // -----------------------------
+
+    private fun callGemini(
+        apiKey: String,
+        prompt: String
+    ): String? {
+
+        val urlString =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+        val url = URL(urlString)
+
+        val connection =
+            url.openConnection() as HttpURLConnection
+
+        connection.requestMethod = "POST"
+
+        connection.setRequestProperty(
+            "Content-Type",
+            "application/json"
+        )
+
+        connection.setRequestProperty(
+            "x-goog-api-key",
+            apiKey
+        )
+
+        connection.doOutput = true
+
+        connection.connectTimeout = 30000
+        connection.readTimeout = 60000
+
+        val requestJson = JSONObject()
+
+        val contents = JSONArray()
+
+        val content = JSONObject()
+
+        val parts = JSONArray()
+
+        val textPart = JSONObject()
+
+        textPart.put(
+            "text",
+            prompt
+        )
+
+        parts.put(textPart)
+
+        content.put(
+            "parts",
+            parts
+        )
+
+        contents.put(content)
+
+        requestJson.put(
+            "contents",
+            contents
+        )
+
+        connection.outputStream.use {
+
+            it.write(
+                requestJson
+                    .toString()
+                    .toByteArray(Charsets.UTF_8)
+            )
+        }
+
+        val responseCode =
+            connection.responseCode
+
+        val stream =
+            if (responseCode in 200..299) {
+
+                connection.inputStream
+
+            } else {
+
+                connection.errorStream
+            }
+
+        val responseText =
+            BufferedReader(
+                InputStreamReader(stream)
+            ).use {
+
+                it.readText()
+            }
+
+        connection.disconnect()
+
+        if (responseCode !in 200..299) {
+
+            return "❌ Gemini API Error\n\n$responseText"
+        }
+
+        val json =
+            JSONObject(responseText)
+
+        val candidates =
+            json.optJSONArray("candidates")
+
+        if (
+            candidates == null ||
+            candidates.length() == 0
+        ) {
+
+            return "❌ Gemini returned no answer."
+        }
+
+        val firstCandidate =
+            candidates.getJSONObject(0)
+
+        val contentObject =
+            firstCandidate.optJSONObject("content")
+
+        val responseParts =
+            contentObject?.optJSONArray("parts")
+
+        if (
+            responseParts == null ||
+            responseParts.length() == 0
+        ) {
+
+            return "❌ Gemini returned an empty response."
+        }
+
+        return responseParts
+            .getJSONObject(0)
+            .optString("text")
+    }
+
+    // -----------------------------
+    // TEACHER VOICE
+    // -----------------------------
+
+    private fun speakTeacher() {
 
         val text = output.text.toString()
 
@@ -176,18 +429,7 @@ What was the main issue, and how did you resolve it?
             return
         }
 
-        val engine = tts
-
-        if (engine == null) {
-            Toast.makeText(
-                this,
-                "Teacher voice is not ready yet.",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        engine.speak(
+        tts.speak(
             text,
             TextToSpeech.QUEUE_FLUSH,
             null,
@@ -195,31 +437,38 @@ What was the main issue, and how did you resolve it?
         )
     }
 
+    // -----------------------------
+    // ENABLE BUTTONS
+    // -----------------------------
+
+    private fun enableButtons() {
+
+        findViewById<Button>(R.id.ask).isEnabled = true
+        findViewById<Button>(R.id.speak).isEnabled = true
+    }
+
+    // -----------------------------
+    // TEXT TO SPEECH
+    // -----------------------------
+
     override fun onInit(status: Int) {
 
         if (status == TextToSpeech.SUCCESS) {
 
-            val result = tts?.setLanguage(
+            tts.setLanguage(
                 Locale("en", "IN")
             )
-
-            if (result == TextToSpeech.LANG_MISSING_DATA ||
-                result == TextToSpeech.LANG_NOT_SUPPORTED
-            ) {
-                Toast.makeText(
-                    this,
-                    "English voice is not available.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
         }
     }
 
+    // -----------------------------
+    // CLEANUP
+    // -----------------------------
+
     override fun onDestroy() {
 
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+        tts.stop()
+        tts.shutdown()
 
         super.onDestroy()
     }
