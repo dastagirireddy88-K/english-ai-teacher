@@ -8,13 +8,19 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.example.englishteacher'
-        minSdk 26
-        targetSdk 35
-        versionCode 51
-        versionName '5.1'
-    }
+    applicationId 'com.example.englishteacher'
+    minSdk 26
+    targetSdk 35
+    versionCode 52
+    versionName '5.2'
 
+    def geminiApiKey = project.findProperty("GEMINI_API_KEY") ?: ""
+
+    buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
+}
+buildFeatures {
+    buildConfig true
+}
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
