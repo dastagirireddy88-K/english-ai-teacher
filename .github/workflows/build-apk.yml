@@ -14,7 +14,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build APK
         working-directory: android
-        run: gradle assembleDebug
+        run: gradle assembleDebug -PGEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
       - uses: actions/upload-artifact@v4
         with:
           name: english-teacher-v5-1-apk
